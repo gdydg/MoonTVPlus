@@ -113,6 +113,16 @@ function LivePageClient() {
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [unsupportedType, setUnsupportedType] = useState<string | null>(null);
 
+  const jumpToDirectPlay = (playUrl: string) => {
+    const encoded = base58Encode((playUrl || '').trim());
+    if (!encoded) {
+      setError('直链地址编码失败');
+      return false;
+    }
+    router.push(`/play?source=directplay&id=${encodeURIComponent(encoded)}`);
+    return true;
+  };
+
   // 切换直播源状态
   const [isSwitchingSource, setIsSwitchingSource] = useState(false);
 
@@ -1401,7 +1411,7 @@ function LivePageClient() {
                   context.url = context.url + '&allowCORS=true';
                 }
               }
-              // direct 模式：直接使用原始 URL，不添加任何参数
+              // direct/direct-link 模式：直接使用原始 URL，不添加任何参数
             }
 
             // level 请求（ts 分片）处理
@@ -1417,7 +1427,7 @@ function LivePageClient() {
                 }
               }
               // m3u8-only 模式：ts 分片 URL 已经被代理服务器重写为原始 URL，不需要添加参数
-              // direct 模式：ts 分片直接使用原始 URL，不添加任何参数
+              // direct/direct-link 模式：ts 分片直接使用原始 URL，不添加任何参数
             }
           }
           // 执行原始load方法

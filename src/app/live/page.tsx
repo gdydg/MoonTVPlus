@@ -103,13 +103,23 @@ function LivePageClient() {
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [unsupportedType, setUnsupportedType] = useState<string | null>(null);
 
-  const jumpToDirectPlay = (playUrl: string) => {
+  const jumpToDirectPlay = (playUrl: string, channelId?: string) => {
     const encoded = base58Encode((playUrl || '').trim());
     if (!encoded) {
       setError('直链地址编码失败');
       return false;
     }
-    router.push(`/play?source=directplay&id=${encodeURIComponent(encoded)}`);
+    const params = new URLSearchParams({
+      source: 'directplay',
+      id: encoded,
+    });
+    if (currentSource?.key) {
+      params.set('liveSource', currentSource.key);
+    }
+    if (channelId) {
+      params.set('liveChannel', channelId);
+    }
+    router.push(`/play?${params.toString()}`);
     return true;
   };
 
@@ -428,7 +438,7 @@ function LivePageClient() {
             selectedChannel = foundChannel;
             setCurrentChannel(foundChannel);
             if (source.proxyMode === 'direct-link') {
-              jumpToDirectPlay(foundChannel.url);
+              jumpToDirectPlay(foundChannel.url, foundChannel.id);
             } else {
               setVideoUrl(foundChannel.url);
             }
@@ -440,7 +450,7 @@ function LivePageClient() {
             selectedChannel = channels[0];
             setCurrentChannel(channels[0]);
             if (source.proxyMode === 'direct-link') {
-              jumpToDirectPlay(channels[0].url);
+              jumpToDirectPlay(channels[0].url, channels[0].id);
             } else {
               setVideoUrl(channels[0].url);
             }
@@ -449,7 +459,7 @@ function LivePageClient() {
           selectedChannel = channels[0];
           setCurrentChannel(channels[0]);
           if (source.proxyMode === 'direct-link') {
-            jumpToDirectPlay(channels[0].url);
+            jumpToDirectPlay(channels[0].url, channels[0].id);
           } else {
             setVideoUrl(channels[0].url);
           }
@@ -629,7 +639,7 @@ function LivePageClient() {
     setCurrentChannel(channel);
 
     if (currentSource?.proxyMode === 'direct-link') {
-      jumpToDirectPlay(channel.url);
+      jumpToDirectPlay(channel.url, channel.id);
       return;
     }
 

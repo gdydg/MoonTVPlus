@@ -3275,12 +3275,41 @@ function PlayPageClient() {
           return;
         }
 
+        const liveSourceKey = searchParams.get('liveSource') || '';
+        const liveChannelId = searchParams.get('liveChannel') || '';
+        let episodes = [directUrl];
+        let episodeTitles = ['直链'];
+        let targetEpisodeIndex = 0;
+
+        if (liveSourceKey) {
+          try {
+            const liveChannelsResp = await fetch(`/api/live/channels?source=${encodeURIComponent(liveSourceKey)}`);
+            if (liveChannelsResp.ok) {
+              const liveChannelsData = await liveChannelsResp.json();
+              const liveChannels = Array.isArray(liveChannelsData?.data) ? liveChannelsData.data : [];
+              if (liveChannels.length > 0) {
+                episodes = liveChannels.map((channel: any) => channel.url).filter((url: unknown) => typeof url === 'string' && url.trim() !== '');
+                episodeTitles = liveChannels.map((channel: any) => channel.name || '频道');
+                if (episodes.length > 0) {
+                  const channelIndex = liveChannelId
+                    ? liveChannels.findIndex((channel: any) => channel.id === liveChannelId)
+                    : -1;
+                  const urlIndex = episodes.findIndex((url) => url === directUrl);
+                  targetEpisodeIndex = channelIndex >= 0 ? channelIndex : (urlIndex >= 0 ? urlIndex : 0);
+                }
+              }
+            }
+          } catch (liveLoadError) {
+            console.error('加载直播频道列表失败，回退为单直链模式:', liveLoadError);
+          }
+        }
+
         const directDetail: SearchResult = {
           id: currentId,
-          title: '直链播放',
+          title: liveSourceKey ? '直播直链播放' : '直链播放',
           poster: '',
-          episodes: [directUrl],
-          episodes_titles: ['直链'],
+          episodes,
+          episodes_titles: episodeTitles,
           source: 'directplay',
           source_name: '直链',
           class: '',
@@ -3301,7 +3330,7 @@ function PlayPageClient() {
         setDetail(directDetail);
         setSourceProxyMode(false);
         setAvailableSources([directDetail]);
-        setCurrentEpisodeIndex(0);
+        setCurrentEpisodeIndex(targetEpisodeIndex);
         setSourceSearchError(null);
         setSourceSearchLoading(false);
         setBackgroundSourcesLoading(false);
@@ -3309,6 +3338,16 @@ function PlayPageClient() {
         const newUrl = new URL(window.location.href);
         newUrl.searchParams.set('source', 'directplay');
         newUrl.searchParams.set('id', currentId);
+        if (liveSourceKey) {
+          newUrl.searchParams.set('liveSource', liveSourceKey);
+        } else {
+          newUrl.searchParams.delete('liveSource');
+        }
+        if (liveChannelId) {
+          newUrl.searchParams.set('liveChannel', liveChannelId);
+        } else {
+          newUrl.searchParams.delete('liveChannel');
+        }
         newUrl.searchParams.delete('prefer');
         newUrl.searchParams.delete('fileName');
         window.history.replaceState({}, '', newUrl.toString());

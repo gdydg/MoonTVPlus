@@ -15,6 +15,7 @@ import {
   subscribeToDataUpdates,
 } from '@/lib/db.client';
 import { parseCustomTimeFormat } from '@/lib/time';
+import { base58Encode } from '@/lib/utils';
 import { useLiveSync } from '@/hooks/useLiveSync';
 
 import EpgScrollableRow from '@/components/EpgScrollableRow';
@@ -53,7 +54,7 @@ interface LiveSource {
   from: 'config' | 'custom';
   channelNumber?: number;
   disabled?: boolean;
-  proxyMode?: 'full' | 'm3u8-only' | 'direct'; // 代理模式
+  proxyMode?: 'full' | 'm3u8-only' | 'direct' | 'direct-link'; // 代理模式
 }
 
 function LivePageClient() {
@@ -101,6 +102,16 @@ function LivePageClient() {
   const [videoUrl, setVideoUrl] = useState('');
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [unsupportedType, setUnsupportedType] = useState<string | null>(null);
+
+  const jumpToDirectPlay = (playUrl: string) => {
+    const encoded = base58Encode((playUrl || '').trim());
+    if (!encoded) {
+      setError('直链地址编码失败');
+      return false;
+    }
+    router.push(`/play?source=directplay&id=${encodeURIComponent(encoded)}`);
+    return true;
+  };
 
   // 切换直播源状态
   const [isSwitchingSource, setIsSwitchingSource] = useState(false);
@@ -416,7 +427,11 @@ function LivePageClient() {
           if (foundChannel) {
             selectedChannel = foundChannel;
             setCurrentChannel(foundChannel);
-            setVideoUrl(foundChannel.url);
+            if (source.proxyMode === 'direct-link') {
+              jumpToDirectPlay(foundChannel.url);
+            } else {
+              setVideoUrl(foundChannel.url);
+            }
             // 延迟滚动到选中的频道
             setTimeout(() => {
               scrollToChannel(foundChannel);
@@ -424,12 +439,20 @@ function LivePageClient() {
           } else {
             selectedChannel = channels[0];
             setCurrentChannel(channels[0]);
-            setVideoUrl(channels[0].url);
+            if (source.proxyMode === 'direct-link') {
+              jumpToDirectPlay(channels[0].url);
+            } else {
+              setVideoUrl(channels[0].url);
+            }
           }
         } else {
           selectedChannel = channels[0];
           setCurrentChannel(channels[0]);
-          setVideoUrl(channels[0].url);
+          if (source.proxyMode === 'direct-link') {
+            jumpToDirectPlay(channels[0].url);
+          } else {
+            setVideoUrl(channels[0].url);
+          }
         }
 
         // 异步获取初始频道的节目单（不阻塞页面加载）
@@ -604,6 +627,12 @@ function LivePageClient() {
     setUnsupportedType(null);
 
     setCurrentChannel(channel);
+
+    if (currentSource?.proxyMode === 'direct-link') {
+      jumpToDirectPlay(channel.url);
+      return;
+    }
+
     setVideoUrl(channel.url);
 
     // 更新URL参数
@@ -1369,7 +1398,7 @@ function LivePageClient() {
                   context.url = context.url + '&allowCORS=true';
                 }
               }
-              // direct 模式：直接使用原始 URL，不添加任何参数
+              // direct/direct-link 模式：直接使用原始 URL，不添加任何参数
             }
 
             // level 请求（ts 分片）处理
@@ -1385,7 +1414,7 @@ function LivePageClient() {
                 }
               }
               // m3u8-only 模式：ts 分片 URL 已经被代理服务器重写为原始 URL，不需要添加参数
-              // direct 模式：ts 分片直接使用原始 URL，不添加任何参数
+              // direct/direct-link 模式：ts 分片直接使用原始 URL，不添加任何参数
             }
           }
           // 执行原始load方法
@@ -1495,7 +1524,7 @@ function LivePageClient() {
       const proxyMode = currentSourceRef.current?.proxyMode || 'full';
 
       // 直连模式：跳过服务器预检查，直接使用 m3u8
-      if (proxyMode === 'direct') {
+      if (proxyMode === 'direct' || proxyMode === 'direct-link') {
         type = 'm3u8';
       } else {
         // 全量代理或仅代理m3u8：通过服务器预检查
@@ -1537,7 +1566,7 @@ function LivePageClient() {
       // 根据代理模式决定 URL
       let targetUrl = videoUrl;
       if (type === 'm3u8') {
-        if (proxyMode === 'direct') {
+        if (proxyMode === 'direct' || proxyMode === 'direct-link') {
           // 直连模式：直接使用原始 URL
           targetUrl = videoUrl;
         } else {

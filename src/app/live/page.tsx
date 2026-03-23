@@ -2,7 +2,7 @@
 
 'use client';
 
-import { Heart, Radio, Tv } from 'lucide-react';
+import { Heart, Radio, RefreshCw, Tv } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
@@ -142,6 +142,8 @@ function LivePageClient() {
 
   // 搜索关键词
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [isRefreshingCurrentSource, setIsRefreshingCurrentSource] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // 节目单信息
   const [epgData, setEpgData] = useState<{
@@ -594,6 +596,50 @@ function LivePageClient() {
       setIsSwitchingSource(false);
       // 自动切换到频道 tab
       setActiveTab('channels');
+    }
+  };
+
+  // 手动刷新当前直播源
+  const handleManualRefreshCurrentSource = async () => {
+    if (!currentSource || isSwitchingSource || isRefreshingCurrentSource) return;
+
+    try {
+      setIsRefreshingCurrentSource(true);
+      setRefreshFeedback(null);
+
+      const response = await fetch('/api/admin/live', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'refresh',
+          key: currentSource.key,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '刷新失败');
+      }
+
+      await fetchChannels(currentSource);
+
+      setRefreshFeedback({
+        type: 'success',
+        message: `已刷新：${currentSource.name}`,
+      });
+    } catch (err) {
+      console.error('手动刷新直播源失败:', err);
+      setRefreshFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : '刷新失败，请稍后重试',
+      });
+    } finally {
+      setIsRefreshingCurrentSource(false);
+      window.setTimeout(() => {
+        setRefreshFeedback(null);
+      }, 3000);
     }
   };
 
@@ -2331,6 +2377,31 @@ function LivePageClient() {
                               />
                             </svg>
                           </button>
+                        )}
+                      </div>
+                      <div className='mt-2 flex items-center justify-between gap-2'>
+                        <button
+                          onClick={handleManualRefreshCurrentSource}
+                          disabled={!currentSource || isSwitchingSource || isRefreshingCurrentSource}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border transition-colors ${
+                            !currentSource || isSwitchingSource || isRefreshingCurrentSource
+                              ? 'cursor-not-allowed text-gray-400 bg-gray-100 border-gray-200 dark:text-gray-500 dark:bg-gray-800 dark:border-gray-700'
+                              : 'text-green-700 bg-green-50 border-green-200 hover:bg-green-100 dark:text-green-300 dark:bg-green-900/30 dark:border-green-800 dark:hover:bg-green-900/40'
+                          }`}
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCurrentSource ? 'animate-spin' : ''}`} />
+                          {isRefreshingCurrentSource ? '刷新中...' : '手动刷新当前订阅'}
+                        </button>
+                        {refreshFeedback && (
+                          <span
+                            className={`text-xs ${
+                              refreshFeedback.type === 'success'
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-red-500 dark:text-red-400'
+                            }`}
+                          >
+                            {refreshFeedback.message}
+                          </span>
                         )}
                       </div>
                     </div>

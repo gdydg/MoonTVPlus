@@ -165,6 +165,23 @@ export async function POST(request: NextRequest) {
         setProxySource.proxyMode = proxyMode as 'full' | 'm3u8-only' | 'direct' | 'direct-link';
         break;
 
+      case 'refresh':
+        // 手动刷新单个直播源
+        const refreshSource = config.LiveConfig.find((l) => l.key === key);
+        if (!refreshSource) {
+          return NextResponse.json({ error: '直播源不存在' }, { status: 404 });
+        }
+
+        try {
+          const nums = await refreshLiveChannels(refreshSource);
+          refreshSource.channelNumber = nums;
+        } catch (error) {
+          console.error('刷新直播源失败:', error);
+          refreshSource.channelNumber = 0;
+          return NextResponse.json({ error: '刷新直播源失败' }, { status: 500 });
+        }
+        break;
+
       default:
         return NextResponse.json({ error: '未知操作' }, { status: 400 });
     }

@@ -577,7 +577,7 @@ function PlayPageClient() {
   const [currentSource, setCurrentSource] = useState(searchParams.get('source') || '');
   const [currentId, setCurrentId] = useState(searchParams.get('id') || '');
   const [fileName] = useState(searchParams.get('fileName') || ''); // 小雅源：用户点击的文件名
-  const isDirectPlay = currentSource === 'directplay';
+  const isDirectPlay = currentSource === 'directplay' || currentSource === 'directlive';
 
   // 解析 source 参数以获取 embyKey（仅用于 API 调用）
   const parseSourceForApi = (source: string): { source: string; embyKey?: string } => {
@@ -1603,7 +1603,7 @@ function PlayPageClient() {
     // 简单的正则或者后缀判断，如果明确不是 m3u8 (比如 mp4)，则不走 m3u8 代理
     const isM3u8 = episodeUrl.toLowerCase().includes('.m3u') || !episodeUrl.toLowerCase().match(/\.(mp4|flv|webm|mkv|avi|mov)(\?.*)?$/);
 
-    if (currentSource === 'directplay' && isM3u8) {
+    if ((currentSource === 'directplay' || currentSource === 'directlive') && isM3u8) {
       // 仅当 localStorage 记忆了该域名需要代理时才走代理
       if (isDirectplayDomainProxied(episodeUrl)) {
         const tokenParam = proxyToken ? `&token=${encodeURIComponent(proxyToken)}` : '';
@@ -1660,7 +1660,7 @@ function PlayPageClient() {
 
             // 对优选源进行测速时也需要考虑代理情况
             const isM3u8 = episodeUrl.toLowerCase().includes('.m3u') || !episodeUrl.toLowerCase().match(/\.(mp4|flv|webm|mkv|avi|mov)(\?.*)?$/);
-            if (source.source === 'directplay' && isM3u8) {
+            if ((source.source === 'directplay' || source.source === 'directlive') && isM3u8) {
               if (isDirectplayDomainProxied(episodeUrl)) {
                 const tokenParam = proxyToken ? `&token=${encodeURIComponent(proxyToken)}` : '';
                 episodeUrl = `/api/proxy-m3u8?url=${encodeURIComponent(episodeUrl)}&source=directplay${tokenParam}`;
@@ -2415,7 +2415,7 @@ function PlayPageClient() {
           // 如果视频源启用了代理模式,且不是本地下载,则通过代理播放
           newUrl = `/api/proxy/vod/m3u8?url=${encodeURIComponent(newUrl)}&source=${encodeURIComponent(currentSource)}`;
           console.log('使用代理模式播放:', newUrl);
-        } else if (currentSource === 'directplay' && newUrl && isM3u8) {
+        } else if ((currentSource === 'directplay' || currentSource === 'directlive') && newUrl && isM3u8) {
           // 直链播放模式：检查 localStorage 是否记录了该域名需要代理
           if (isDirectplayDomainProxied(newUrl)) {
             const tokenParam = proxyToken ? `&token=${encodeURIComponent(proxyToken)}` : '';
@@ -3455,9 +3455,9 @@ function PlayPageClient() {
     };
 
     const initAll = async () => {
-      if (currentSource === 'directplay') {
+      if (currentSource === 'directplay' || currentSource === 'directlive') {
         if (!currentId) {
-          setError('缺少直链地址');
+          setError(currentSource === 'directlive' ? '缺少直播订阅参数' : '缺少直链地址');
           setLoading(false);
           return;
         }
@@ -3466,35 +3466,78 @@ function PlayPageClient() {
         setLoadingStage('fetching');
         setLoadingMessage('🎬 正在准备直链播放...');
 
-        let directUrl = '';
-        try {
-          directUrl = base58Decode(currentId);
-        } catch (decodeError) {
-          console.error('直链地址解析失败:', decodeError);
-          setError('直链地址解析失败');
-          setLoading(false);
-          return;
+        let directDetail: SearchResult;
+        if (currentSource === 'directlive') {
+          try {
+            const response = await fetch(`/api/live/channels?source=${encodeURIComponent(currentId)}`);
+            const result = await response.json();
+            if (!response.ok || !result?.success) {
+              throw new Error(result?.error || '加载直播订阅失败');
+            }
+
+            const channels = (result.data || []).filter((channel: any) => channel?.url);
+            if (channels.length === 0) {
+              throw new Error('该直播订阅暂无可播放频道');
+            }
+
+            const episodes = channels.map((channel: any) => channel.url);
+            const episodeTitles = channels.map((channel: any, index: number) => {
+              const group = channel.group || '其他';
+              const channelName = channel.name || `频道${index + 1}`;
+              return `[${group}] ${channelName}`;
+            });
+
+            directDetail = {
+              id: currentId,
+              title: searchParams.get('title') || '直播订阅直链播放',
+              poster: '',
+              episodes,
+              episodes_titles: episodeTitles,
+              source: 'directlive',
+              source_name: '直播订阅直链',
+              class: '',
+              year: '',
+              desc: '',
+              type_name: '',
+              douban_id: 0,
+            };
+          } catch (directLiveError) {
+            console.error('直播订阅加载失败:', directLiveError);
+            setError(directLiveError instanceof Error ? directLiveError.message : '直播订阅加载失败');
+            setLoading(false);
+            return;
+          }
+        } else {
+          let directUrl = '';
+          try {
+            directUrl = base58Decode(currentId);
+          } catch (decodeError) {
+            console.error('直链地址解析失败:', decodeError);
+            setError('直链地址解析失败');
+            setLoading(false);
+            return;
+          }
+
+          directDetail = {
+            id: currentId,
+            title: '直链播放',
+            poster: '',
+            episodes: [directUrl],
+            episodes_titles: ['直链'],
+            source: 'directplay',
+            source_name: '直链',
+            class: '',
+            year: '',
+            desc: '',
+            type_name: '',
+            douban_id: 0,
+          };
         }
 
-        const directDetail: SearchResult = {
-          id: currentId,
-          title: '直链播放',
-          poster: '',
-          episodes: [directUrl],
-          episodes_titles: ['直链'],
-          source: 'directplay',
-          source_name: '直链',
-          class: '',
-          year: '',
-          desc: '',
-          type_name: '',
-          douban_id: 0,
-        };
-
         setNeedPrefer(false);
-        setCurrentSource('directplay');
+        setCurrentSource(currentSource);
         setCurrentId(currentId);
-        setVideoTitle('直链播放');
+        setVideoTitle(directDetail.title || '直链播放');
         setVideoYear('');
         setVideoCover('');
         setVideoDoubanId(0);
@@ -3502,13 +3545,16 @@ function PlayPageClient() {
         setDetail(directDetail);
         setSourceProxyMode(false);
         setAvailableSources([directDetail]);
-        setCurrentEpisodeIndex(0);
+        setCurrentEpisodeIndex((prev) => {
+          const maxIndex = Math.max(0, (directDetail.episodes?.length || 1) - 1);
+          return Math.min(prev, maxIndex);
+        });
         setSourceSearchError(null);
         setSourceSearchLoading(false);
         setBackgroundSourcesLoading(false);
 
         const newUrl = new URL(window.location.href);
-        newUrl.searchParams.set('source', 'directplay');
+        newUrl.searchParams.set('source', currentSource);
         newUrl.searchParams.set('id', currentId);
         newUrl.searchParams.delete('prefer');
         newUrl.searchParams.delete('fileName');
@@ -5648,7 +5694,7 @@ function PlayPageClient() {
                         } else {
                           // CORS 错误或其他网络错误
                           // 如果是直链直连模式（URL 不含代理前缀），记录原始 URL 以便用户一键启用代理
-                          if (currentSourceRef.current === 'directplay' && !url.includes('/api/proxy-m3u8') && !url.includes('/api/proxy/vod/m3u8')) {
+                          if ((currentSourceRef.current === 'directplay' || currentSourceRef.current === 'directlive') && !url.includes('/api/proxy-m3u8') && !url.includes('/api/proxy/vod/m3u8')) {
                             setCorsFailedUrl(url);
                           }
                           setVideoError('无法访问视频源（可能是跨域限制或访问被拒绝）');
@@ -7561,7 +7607,7 @@ function PlayPageClient() {
             if (proxyAttemptedRef.current) {
               // 代理已经尝试过（走了 415→直连 的路径），直连也失败了，不再提供代理按钮
               setVideoError('视频无法在浏览器中播放（已尝试代理，格式不兼容）');
-            } else if (currentSourceRef.current === 'directplay' && !currentUrl.includes('/api/proxy-m3u8')) {
+            } else if ((currentSourceRef.current === 'directplay' || currentSourceRef.current === 'directlive') && !currentUrl.includes('/api/proxy-m3u8')) {
               setCorsFailedUrl(currentUrl);
               setVideoError('视频播放失败（格式不支持或跨域限制）');
             } else {

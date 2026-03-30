@@ -68,7 +68,7 @@ interface LiveSource {
   from: 'config' | 'custom';
   channelNumber?: number;
   disabled?: boolean;
-  proxyMode?: 'full' | 'm3u8-only' | 'direct'; // 代理模式
+  proxyMode?: 'full' | 'm3u8-only' | 'direct' | 'direct-link'; // 代理模式
 }
 
 function LivePageClient() {
@@ -135,6 +135,8 @@ function LivePageClient() {
 
   // 搜索关键词
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [isRefreshingCurrentSource, setIsRefreshingCurrentSource] = useState(false);
+  const [refreshStatusText, setRefreshStatusText] = useState('');
   const [expandedMergedChannels, setExpandedMergedChannels] = useState<string[]>([]);
 
   // 节目单信息
@@ -542,6 +544,15 @@ function LivePageClient() {
 
   // 切换直播源
   const handleSourceChange = async (source: LiveSource) => {
+    if (source.proxyMode === 'direct-link') {
+      const playSearchParams = new URLSearchParams();
+      playSearchParams.set('source', 'directlive');
+      playSearchParams.set('id', source.key);
+      playSearchParams.set('title', `${source.name} 直链播放`);
+      router.push(`/play?${playSearchParams.toString()}`);
+      return;
+    }
+
     try {
       // 设置切换状态，锁住频道切换器
       setIsSwitchingSource(true);
@@ -576,6 +587,32 @@ function LivePageClient() {
       setIsSwitchingSource(false);
       // 自动切换到频道 tab
       setActiveTab('channels');
+    }
+  };
+
+  const handleRefreshCurrentSubscription = async () => {
+    if (!currentSource || isRefreshingCurrentSource) return;
+
+    setIsRefreshingCurrentSource(true);
+    setRefreshStatusText('');
+    try {
+      const response = await fetch('/api/live/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceKey: currentSource.key }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || '刷新失败');
+      }
+
+      await fetchChannels(currentSource);
+      setRefreshStatusText('订阅刷新成功');
+    } catch (err) {
+      setRefreshStatusText(err instanceof Error ? err.message : '刷新失败');
+    } finally {
+      setIsRefreshingCurrentSource(false);
     }
   };
 
@@ -2370,6 +2407,25 @@ function LivePageClient() {
                               />
                             </svg>
                           </button>
+                        )}
+                      </div>
+                      <div className='mt-2 flex items-center justify-between'>
+                        <button
+                          type='button'
+                          onClick={handleRefreshCurrentSubscription}
+                          disabled={!currentSource || isSwitchingSource || isRefreshingCurrentSource}
+                          className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${
+                            !currentSource || isSwitchingSource || isRefreshingCurrentSource
+                              ? 'opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500'
+                              : 'border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20'
+                          }`}
+                        >
+                          {isRefreshingCurrentSource ? '刷新中...' : '刷新当前订阅'}
+                        </button>
+                        {refreshStatusText && (
+                          <span className='text-xs text-gray-500 dark:text-gray-400'>
+                            {refreshStatusText}
+                          </span>
                         )}
                       </div>
                     </div>

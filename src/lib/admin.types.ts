@@ -101,7 +101,7 @@ export interface AdminConfig {
     from: 'config' | 'custom';
     channelNumber?: number;
     disabled?: boolean;
-    proxyMode?: 'full' | 'm3u8-only' | 'direct'; // 代理模式：full=全量代理，m3u8-only=仅代理m3u8，direct=直连
+    proxyMode?: 'full' | 'm3u8-only' | 'direct' | 'direct-link'; // 代理模式：full=全量代理，m3u8-only=仅代理m3u8，direct=直连，direct-link=直链播放
   }[];
   WebLiveConfig?: {
     key: string;

@@ -545,10 +545,11 @@ function LivePageClient() {
   // 切换直播源
   const handleSourceChange = async (source: LiveSource) => {
     if (source.proxyMode === 'direct-link') {
-      const homeSearchParams = new URLSearchParams();
-      homeSearchParams.set('directLiveSource', source.key);
-      homeSearchParams.set('directLiveSourceName', source.name);
-      router.push(`/?${homeSearchParams.toString()}`);
+      const playSearchParams = new URLSearchParams();
+      playSearchParams.set('source', 'directlive');
+      playSearchParams.set('id', source.key);
+      playSearchParams.set('title', `${source.name} 直链播放`);
+      router.push(`/play?${playSearchParams.toString()}`);
       return;
     }
 

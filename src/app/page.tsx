@@ -4,7 +4,7 @@
 
 import { Bot, ChevronRight, Link as LinkIcon, ListVideo, Music } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
 import {
@@ -34,6 +34,13 @@ interface HomeModule {
   order: number;
 }
 
+interface LiveDirectChannel {
+  id: string;
+  name: string;
+  url: string;
+  group?: string;
+}
+
 function HomeClient() {
   // 移除了 activeTab 状态，收藏夹功能已移到 UserMenu
   const [hotMovies, setHotMovies] = useState<DoubanItem[]>([]);
@@ -47,6 +54,7 @@ function HomeClient() {
   const [loading, setLoading] = useState(true);
   const { announcement } = useSite();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // 首页模块配置状态
   const [homeModules, setHomeModules] = useState<HomeModule[]>([
@@ -69,21 +77,87 @@ function HomeClient() {
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [showDirectPlayDialog, setShowDirectPlayDialog] = useState(false);
   const [directPlayUrl, setDirectPlayUrl] = useState('');
+  const [directPlayMode, setDirectPlayMode] = useState<'single' | 'live-subscription'>('single');
+  const [directLiveSourceName, setDirectLiveSourceName] = useState('');
+  const [directLiveChannels, setDirectLiveChannels] = useState<LiveDirectChannel[]>([]);
+  const [selectedDirectLiveChannelId, setSelectedDirectLiveChannelId] = useState('');
+  const [isDirectLiveLoading, setIsDirectLiveLoading] = useState(false);
+  const [directLiveError, setDirectLiveError] = useState('');
 
   const handleDirectPlay = () => {
+    setDirectPlayMode('single');
     setDirectPlayUrl('');
+    setDirectLiveChannels([]);
+    setSelectedDirectLiveChannelId('');
+    setDirectLiveError('');
+    setDirectLiveSourceName('');
     setShowDirectPlayDialog(true);
   };
 
   const submitDirectPlay = () => {
-    const trimmed = directPlayUrl.trim();
+    const targetUrl = directPlayMode === 'single'
+      ? directPlayUrl.trim()
+      : (directLiveChannels.find(channel => channel.id === selectedDirectLiveChannelId)?.url || '').trim();
+
+    const trimmed = targetUrl;
     if (!trimmed) return;
     const encoded = base58Encode(trimmed);
     if (!encoded) return;
     setShowDirectPlayDialog(false);
     setDirectPlayUrl('');
+    setDirectPlayMode('single');
+    setDirectLiveChannels([]);
+    setSelectedDirectLiveChannelId('');
+    setDirectLiveError('');
+    setDirectLiveSourceName('');
     router.push(`/play?source=directplay&id=${encodeURIComponent(encoded)}`);
   };
+
+  const loadLiveSubscriptionToDirectPlay = async (sourceKey: string, sourceName?: string) => {
+    setDirectPlayMode('live-subscription');
+    setDirectPlayUrl('');
+    setDirectLiveError('');
+    setDirectLiveSourceName(sourceName || '');
+    setDirectLiveChannels([]);
+    setSelectedDirectLiveChannelId('');
+    setShowDirectPlayDialog(true);
+    setIsDirectLiveLoading(true);
+
+    try {
+      const response = await fetch(`/api/live/channels?source=${encodeURIComponent(sourceKey)}`);
+      const result = await response.json();
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || '加载订阅频道失败');
+      }
+
+      const channels: LiveDirectChannel[] = (result.data || []).map((channel: any) => ({
+        id: String(channel.id || ''),
+        name: channel.name || '',
+        url: channel.url || '',
+        group: channel.group || '其他',
+      })).filter((channel: LiveDirectChannel) => Boolean(channel.id && channel.url));
+
+      setDirectLiveChannels(channels);
+      if (channels.length > 0) {
+        setSelectedDirectLiveChannelId(channels[0].id);
+      } else {
+        setDirectLiveError('该直播订阅暂无可用频道');
+      }
+    } catch (error) {
+      setDirectLiveError(error instanceof Error ? error.message : '加载订阅频道失败');
+    } finally {
+      setIsDirectLiveLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const directLiveSource = searchParams.get('directLiveSource');
+    if (!directLiveSource) return;
+
+    const directLiveSourceName = searchParams.get('directLiveSourceName') || '';
+    loadLiveSubscriptionToDirectPlay(directLiveSource, directLiveSourceName);
+    router.replace('/');
+  }, [searchParams]);
 
   const loadHomeLayoutSettings = () => {
     if (typeof window === 'undefined') return;
@@ -717,20 +791,48 @@ function HomeClient() {
               </button>
             </div>
             <div className='p-4 space-y-4'>
-              <div className='text-sm text-gray-600 dark:text-gray-300'>
-                请输入可直接播放的视频链接。
-              </div>
-              <input
-                value={directPlayUrl}
-                onChange={(event) => setDirectPlayUrl(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    submitDirectPlay();
-                  }
-                }}
-                placeholder='https://example.com/video.m3u8'
-                className='w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500'
-              />
+              {directPlayMode === 'single' ? (
+                <>
+                  <div className='text-sm text-gray-600 dark:text-gray-300'>
+                    请输入可直接播放的视频链接。
+                  </div>
+                  <input
+                    value={directPlayUrl}
+                    onChange={(event) => setDirectPlayUrl(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        submitDirectPlay();
+                      }
+                    }}
+                    placeholder='https://example.com/video.m3u8'
+                    className='w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500'
+                  />
+                </>
+              ) : (
+                <>
+                  <div className='text-sm text-gray-600 dark:text-gray-300'>
+                    {directLiveSourceName ? `${directLiveSourceName} - 选择频道播放` : '选择订阅内频道播放'}
+                  </div>
+                  <select
+                    value={selectedDirectLiveChannelId}
+                    onChange={(event) => setSelectedDirectLiveChannelId(event.target.value)}
+                    disabled={isDirectLiveLoading || directLiveChannels.length === 0}
+                    className='w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50'
+                  >
+                    {directLiveChannels.map(channel => (
+                      <option key={channel.id} value={channel.id}>
+                        {channel.group ? `[${channel.group}] ` : ''}{channel.name}
+                      </option>
+                    ))}
+                  </select>
+                  {isDirectLiveLoading && (
+                    <div className='text-xs text-gray-500 dark:text-gray-400'>正在加载频道...</div>
+                  )}
+                  {directLiveError && (
+                    <div className='text-xs text-red-500'>{directLiveError}</div>
+                  )}
+                </>
+              )}
               <div className='flex justify-end gap-2'>
                 <button
                   onClick={() => setShowDirectPlayDialog(false)}
@@ -740,7 +842,11 @@ function HomeClient() {
                 </button>
                 <button
                   onClick={submitDirectPlay}
-                  disabled={!directPlayUrl.trim()}
+                  disabled={
+                    directPlayMode === 'single'
+                      ? !directPlayUrl.trim()
+                      : !selectedDirectLiveChannelId || isDirectLiveLoading || !!directLiveError
+                  }
                   className='px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
                 >
                   开始播放

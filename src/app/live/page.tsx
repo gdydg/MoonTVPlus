@@ -341,21 +341,25 @@ function LivePageClient() {
       setLiveSources(sources);
 
       if (sources.length > 0) {
-        // 默认选中第一个源
+        // 默认选中第一个源（若 URL 指定 source 则优先该 source）
         const firstSource = sources[0];
-        if (needLoadSource) {
-          const foundSource = sources.find((s: LiveSource) => s.key === needLoadSource);
-          if (foundSource) {
-            setCurrentSource(foundSource);
-            await fetchChannels(foundSource);
-          } else {
-            setCurrentSource(firstSource);
-            await fetchChannels(firstSource);
-          }
-        } else {
-          setCurrentSource(firstSource);
-          await fetchChannels(firstSource);
+        const targetSource = needLoadSource
+          ? sources.find((s: LiveSource) => s.key === needLoadSource) || firstSource
+          : firstSource;
+
+        // 直链播放模式：进入直播页时若默认命中该源，直接跳转到直链播放页
+        if (targetSource.proxyMode === 'direct-link') {
+          const playSearchParams = new URLSearchParams();
+          playSearchParams.set('source', 'directlive');
+          playSearchParams.set('id', targetSource.key);
+          playSearchParams.set('title', `${targetSource.name} 直链播放`);
+          setCurrentSource(targetSource);
+          router.replace(`/play?${playSearchParams.toString()}`);
+          return;
         }
+
+        setCurrentSource(targetSource);
+        await fetchChannels(targetSource);
       }
 
       setLoadingStage('ready');
@@ -2687,14 +2691,20 @@ function LivePageClient() {
                       {liveSources?.length > 0 ? (
                         liveSources.map((source) => {
                           const isCurrentSource = source.key === currentSource?.key;
+                          const canOpenDirectLink = source.proxyMode === 'direct-link';
+                          const sourceClickable = !isCurrentSource || canOpenDirectLink;
                           return (
                             <div
                               key={source.key}
-                              onClick={() => !isCurrentSource && handleSourceChange(source)}
+                              onClick={() => sourceClickable && handleSourceChange(source)}
                               className={`flex items-start gap-3 px-2 py-3 rounded-lg transition-all select-none duration-200 relative
                                 ${isCurrentSource
                                   ? 'bg-green-500/10 dark:bg-green-500/20 border-green-500/30 border'
-                                  : 'hover:bg-gray-200/50 dark:hover:bg-white/10 hover:scale-[1.02] cursor-pointer'
+                                  : 'hover:bg-gray-200/50 dark:hover:bg-white/10 hover:scale-[1.02]'
+                                }
+                                ${sourceClickable
+                                  ? 'cursor-pointer'
+                                  : 'cursor-not-allowed opacity-70'
                                 }`.trim()}
                             >
                               {/* 图标 */}

@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const sourceKey = searchParams.get('source');
+    const lite = searchParams.get('lite') === '1';
 
     if (!sourceKey) {
       return NextResponse.json({ error: '缺少直播源参数' }, { status: 400 });
@@ -21,7 +22,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: channelData.channels
+      data: lite
+        ? channelData.channels.map((channel) => ({
+            url: channel.url,
+            name: channel.name,
+            group: channel.group,
+          }))
+        : channelData.channels
     });
   } catch (error) {
     return NextResponse.json(

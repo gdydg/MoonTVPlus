@@ -341,21 +341,25 @@ function LivePageClient() {
       setLiveSources(sources);
 
       if (sources.length > 0) {
-        // 默认选中第一个源
+        // 默认选中第一个源（若 URL 指定 source 则优先该 source）
         const firstSource = sources[0];
-        if (needLoadSource) {
-          const foundSource = sources.find((s: LiveSource) => s.key === needLoadSource);
-          if (foundSource) {
-            setCurrentSource(foundSource);
-            await fetchChannels(foundSource);
-          } else {
-            setCurrentSource(firstSource);
-            await fetchChannels(firstSource);
-          }
-        } else {
-          setCurrentSource(firstSource);
-          await fetchChannels(firstSource);
+        const targetSource = needLoadSource
+          ? sources.find((s: LiveSource) => s.key === needLoadSource) || firstSource
+          : firstSource;
+
+        // 直链播放模式：进入直播页时若默认命中该源，直接跳转到直链播放页
+        if (targetSource.proxyMode === 'direct-link') {
+          const playSearchParams = new URLSearchParams();
+          playSearchParams.set('source', 'directlive');
+          playSearchParams.set('id', targetSource.key);
+          playSearchParams.set('title', `${targetSource.name} 直链播放`);
+          setCurrentSource(targetSource);
+          router.replace(`/play?${playSearchParams.toString()}`);
+          return;
         }
+
+        setCurrentSource(targetSource);
+        await fetchChannels(targetSource);
       }
 
       setLoadingStage('ready');

@@ -3469,7 +3469,8 @@ function PlayPageClient() {
         let directDetail: SearchResult;
         if (currentSource === 'directlive') {
           try {
-            const response = await fetch(`/api/live/channels?source=${encodeURIComponent(currentId)}`);
+            // 直链播放只需要最小字段（url/name/group），避免大订阅返回体过大导致加载/跳转异常
+            const response = await fetch(`/api/live/channels?source=${encodeURIComponent(currentId)}&lite=1`);
             const result = await response.json();
             if (!response.ok || !result?.success) {
               throw new Error(result?.error || '加载直播订阅失败');
@@ -3481,10 +3482,11 @@ function PlayPageClient() {
             }
 
             const episodes = channels.map((channel: any) => channel.url);
+            // 直链播放模式不支持展开/收起线路，始终保留原频道名，
+            // 仅移除历史上的 [分组] 前缀显示。
             const episodeTitles = channels.map((channel: any, index: number) => {
-              const group = channel.group || '其他';
-              const channelName = channel.name || `频道${index + 1}`;
-              return `[${group}] ${channelName}`;
+              const channelName = typeof channel.name === 'string' ? channel.name.trim() : '';
+              return channelName || `频道${index + 1}`;
             });
 
             directDetail = {

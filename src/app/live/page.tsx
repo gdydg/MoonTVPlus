@@ -2687,14 +2687,20 @@ function LivePageClient() {
                       {liveSources?.length > 0 ? (
                         liveSources.map((source) => {
                           const isCurrentSource = source.key === currentSource?.key;
+                          const canOpenDirectLink = source.proxyMode === 'direct-link';
+                          const sourceClickable = !isCurrentSource || canOpenDirectLink;
                           return (
                             <div
                               key={source.key}
-                              onClick={() => !isCurrentSource && handleSourceChange(source)}
+                              onClick={() => sourceClickable && handleSourceChange(source)}
                               className={`flex items-start gap-3 px-2 py-3 rounded-lg transition-all select-none duration-200 relative
                                 ${isCurrentSource
                                   ? 'bg-green-500/10 dark:bg-green-500/20 border-green-500/30 border'
-                                  : 'hover:bg-gray-200/50 dark:hover:bg-white/10 hover:scale-[1.02] cursor-pointer'
+                                  : 'hover:bg-gray-200/50 dark:hover:bg-white/10 hover:scale-[1.02]'
+                                }
+                                ${sourceClickable
+                                  ? 'cursor-pointer'
+                                  : 'cursor-not-allowed opacity-70'
                                 }`.trim()}
                             >
                               {/* 图标 */}
